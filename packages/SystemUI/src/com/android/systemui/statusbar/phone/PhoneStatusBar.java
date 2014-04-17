@@ -627,6 +627,40 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode,
         mSetupButton.setVisibility(isAuto ? View.VISIBLE : View.GONE);
     }
 
+    private void setRibbonSize() {
+        int size = Settings.System.getIntForUser(mContext.getContentResolver(),
+                Settings.System.QS_QUICK_ACCESS_SIZE, 0, UserHandle.USER_CURRENT);
+        int heightId, widthId, marginId;
+        switch (size) {
+            case 2:
+                heightId = R.dimen.qs_ribbon_height_small;
+                widthId = R.dimen.qs_ribbon_width_small;
+                marginId = R.dimen.qs_tile_ribbon_icon_margin_small;
+                break;
+            case 1:
+                heightId = R.dimen.qs_ribbon_height_narrow;
+                widthId = R.dimen.qs_ribbon_width_narrow;
+                marginId = R.dimen.qs_tile_ribbon_icon_margin_narrow;
+                break;
+            case 0:
+            default:
+                heightId = R.dimen.qs_ribbon_height_normal;
+                widthId = R.dimen.qs_ribbon_width_normal;
+                marginId = R.dimen.qs_tile_ribbon_icon_margin_normal;
+                break;
+        }
+        Resources res = mContext.getResources();
+        if (mRibbonView != null) {
+            LayoutParams lp = mRibbonView.getLayoutParams();
+            lp.height = res.getDimensionPixelSize(heightId);
+            mRibbonView.setLayoutParams(lp);
+        }
+        if (mRibbonQS != null) {
+            mRibbonQS.setImageMargins(res.getDimensionPixelSize(marginId));
+            mRibbonQS.setSingleRowCellWidth(res.getDimensionPixelSize(widthId));
+        }
+    }
+
     private void cleanupRibbon() {
         if (mRibbonView == null) {
             return;
@@ -658,6 +692,7 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode,
                 mRibbonQS.setupQuickSettings();
             }
         }
+        setRibbonSize();
     }
 
     // ================================================================================
@@ -3771,6 +3806,9 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode,
                     cleanupBrightnessSlider();
                 }
             } else if (uri != null && uri.equals(Settings.System.getUriFor(
+                    Settings.System.QS_QUICK_ACCESS_SIZE))) {
+                setRibbonSize();
+            } else if (uri != null && uri.equals(Settings.System.getUriFor(
                     Settings.System.QS_QUICK_ACCESS_LINKED))) {
                 final ContentResolver resolver = mContext.getContentResolver();
                 boolean layoutLinked = Settings.System.getIntForUser(resolver,
@@ -3833,6 +3871,10 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode,
 
             cr.registerContentObserver(
                     Settings.System.getUriFor(Settings.System.QS_QUICK_ACCESS),
+                    false, this, UserHandle.USER_ALL);
+
+            cr.registerContentObserver(
+                    Settings.System.getUriFor(Settings.System.QS_QUICK_ACCESS_SIZE),
                     false, this, UserHandle.USER_ALL);
 
             cr.registerContentObserver(
