@@ -71,7 +71,6 @@ import android.os.UserHandle;
 import android.provider.Settings;
 import android.service.notification.StatusBarNotification;
 import android.telephony.MSimTelephonyManager;
-import android.telephony.TelephonyManager;
 import android.util.DisplayMetrics;
 import android.util.EventLog;
 import android.util.Log;
@@ -84,6 +83,7 @@ import android.view.VelocityTracker;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.view.ViewGroup.MarginLayoutParams;
 import android.view.ViewGroup.LayoutParams;
 import android.view.ViewPropertyAnimator;
 import android.view.ViewStub;
@@ -94,7 +94,6 @@ import android.view.animation.AnimationUtils;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
-import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -258,6 +257,7 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode,
     private boolean mHasQuickAccessSettings;
     private boolean mQuickAccessLayoutLinked = true;
     private QuickSettingsHorizontalScrollView mRibbonView;
+    private boolean mShowRibbonOnBottom = false;
     private QuickSettingsController mRibbonQS;
 
     // Brightness slider
@@ -670,12 +670,60 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode,
         mRibbonQS = null;
     }
 
+    private void placeQuickSettings() {
+        if (mRibbonView == null)
+            return;
+        LinearLayout parent = (LinearLayout) mRibbonView.getParent();
+        LinearLayout bottom_bar = (LinearLayout) mStatusBarWindow
+                .findViewById(R.id.bottom_bar);
+        if (mShowRibbonOnBottom && !parent.equals(bottom_bar)) {
+            parent.removeView(mRibbonView);
+            bottom_bar.addView(mRibbonView);
+        } else if (!mShowRibbonOnBottom && parent.equals(bottom_bar)) {
+            LinearLayout main_layout = (LinearLayout) mStatusBarWindow
+                    .findViewById(R.id.main_layout);
+            parent.removeView(mRibbonView);
+            main_layout.addView(mRibbonView, 0);
+        } else
+            return;
+
+        setCarrierLabelMargin();
+    }
+
+    private void setCarrierLabelMargin() {
+        if (!mShowCarrierInPanel)
+            return;
+        MarginLayoutParams lp = (MarginLayoutParams) mCarrierLabel.getLayoutParams();
+        lp.bottomMargin = mContext.getResources().getDimensionPixelSize(
+                R.dimen.close_handle_height);
+        if (mShowRibbonOnBottom && mRibbonView != null)
+            lp.bottomMargin += mRibbonView.getHeight();
+        mCarrierLabel.setLayoutParams(lp);
+    }
+
     private void inflateRibbon() {
         if (mRibbonView == null) {
             ViewStub ribbon_stub = (ViewStub) mStatusBarWindow.findViewById(R.id.ribbon_settings_stub);
             if (ribbon_stub != null) {
                 mRibbonView = (QuickSettingsHorizontalScrollView) ribbon_stub.inflate();
                 mRibbonView.setVisibility(View.VISIBLE);
+                // if we change the size we might have to update the margins
+                mRibbonView.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+                    @Override
+                    public void onLayoutChange(View v, int left, int top, int right, int bottom,
+                            int oldLeft,
+                            int oldTop, int oldRight, int oldBottom) {
+                        if (bottom - top == oldBottom - oldTop)
+                            return;
+                        // We cannot call this in layout phase, so call it later
+                        mHandler.post(new Runnable() {
+                            @Override
+                            public void run() {
+                                setCarrierLabelMargin();
+                            }
+                        });
+                    }
+                });
             }
         }
         if (mRibbonQS == null) {
@@ -693,6 +741,7 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode,
             }
         }
         setRibbonSize();
+        placeQuickSettings();
     }
 
     // ================================================================================
@@ -1052,6 +1101,8 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode,
             final ContentResolver resolver = mContext.getContentResolver();
             mHasQuickAccessSettings = Settings.System.getIntForUser(resolver,
                     Settings.System.QS_QUICK_ACCESS, 0, UserHandle.USER_CURRENT) == 1;
+            mShowRibbonOnBottom = Settings.System.getIntForUser(resolver,
+                    Settings.System.QS_QUICK_ACCESS_BOTTOM, 0, UserHandle.USER_CURRENT) == 1;
             mQuickAccessLayoutLinked = Settings.System.getIntForUser(resolver,
                     Settings.System.QS_QUICK_ACCESS_LINKED, 1, UserHandle.USER_CURRENT) == 1;
             if (mHasQuickAccessSettings) {
@@ -3809,6 +3860,12 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode,
                     Settings.System.QS_QUICK_ACCESS_SIZE))) {
                 setRibbonSize();
             } else if (uri != null && uri.equals(Settings.System.getUriFor(
+                    Settings.System.QS_QUICK_ACCESS_BOTTOM))) {
+                final ContentResolver resolver = mContext.getContentResolver();
+                mShowRibbonOnBottom = Settings.System.getIntForUser(resolver,
+                        Settings.System.QS_QUICK_ACCESS_BOTTOM, 1, UserHandle.USER_CURRENT) == 1;
+                placeQuickSettings();
+            } else if (uri != null && uri.equals(Settings.System.getUriFor(
                     Settings.System.QS_QUICK_ACCESS_LINKED))) {
                 final ContentResolver resolver = mContext.getContentResolver();
                 boolean layoutLinked = Settings.System.getIntForUser(resolver,
@@ -3883,6 +3940,10 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode,
 
             cr.registerContentObserver(
                     Settings.System.getUriFor(Settings.System.NOTIFICATION_BRIGHTNESS_SLIDER),
+                    false, this, UserHandle.USER_ALL);
+
+            cr.registerContentObserver(
+                    Settings.System.getUriFor(Settings.System.QS_QUICK_ACCESS_BOTTOM),
                     false, this, UserHandle.USER_ALL);
 
             cr.registerContentObserver(
