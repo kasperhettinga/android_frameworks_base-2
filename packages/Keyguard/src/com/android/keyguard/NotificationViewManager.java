@@ -42,7 +42,6 @@ import java.util.HashSet;
 import java.util.Set;
 
 import com.android.internal.widget.LockPatternUtils;
-import com.android.internal.util.slim.QuietHoursHelper;
 
 public class NotificationViewManager {
     private final static String TAG = "Keyguard:NotificationViewManager";
@@ -182,8 +181,10 @@ public class NotificationViewManager {
                         if (config.pocketMode && mTimeCovered != 0 && (config.showAlways
                                 || mHostView.getNotificationCount() > 0)
                                 && System.currentTimeMillis() - mTimeCovered > MIN_TIME_COVERED
-                                && !QuietHoursHelper.inQuietHours(
-                                mContext, Settings.System.QUIET_HOURS_DIM)) {
+                                && Settings.System.getIntForUser(
+                                mContext.getContentResolver(),
+                                Settings.System.QUIET_HOURS_HAPTIC,
+                                0, UserHandle.USER_CURRENT_OR_SELF) == 2) {
                             wakeDevice();
                             mWokenByPocketMode = true;
                             mHostView.showAllNotifications();
